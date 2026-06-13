@@ -1,6 +1,11 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "local>yshrsmz/renovate-config"
-  ]
+    "local>yshrsmz/renovate-config",
+    "local>yshrsmz/renovate-config:gomod",
+    "local>yshrsmz/renovate-config:github-actions",
+    "local>yshrsmz/renovate-config:npm",
+    "local>yshrsmz/renovate-config:tooling"
+  ],
+  "reviewers": ["yshrsmz"]
 }
