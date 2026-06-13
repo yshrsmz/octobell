@@ -1,0 +1,9 @@
+{
+	"name": "octobell",
+	"scripts": {
+		"openspec": "openspec"
+	},
+	"devDependencies": {
+		"@fission-ai/openspec": "1.4.1"
+	}
+}

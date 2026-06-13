@@ -6,3 +6,10 @@
 
 # editor
 .DS_Store
+
+
+# node.js
+node_modules/
+
+# Claude Code
+.claude/settings.local.json
