@@ -46,24 +46,25 @@ func TestModelFlowHeadless(t *testing.T) {
 	}
 	_ = m.View()
 
-	// 選択既読（楽観的更新でローカル Unread が落ちる）
+	// 選択既読（All=false の楽観的更新で一覧から除去される）
 	m.list.Select(0)
 	_ = m.markSelectedRead()
-	if m.notifs[0].Unread {
-		t.Error("選択既読で notifs[0].Unread が false になるべき")
+	if len(m.notifs) != 1 {
+		t.Fatalf("選択既読で 1 件除去され 1 件残るべき, got %d", len(m.notifs))
+	}
+	if m.notifs[0].ID != "2" {
+		t.Errorf("残るのは ID=2 のはず, got %s", m.notifs[0].ID)
 	}
 
 	// 開く（既読化しない経路）でパニックしない
-	m.list.Select(1)
+	m.list.Select(0)
 	_ = m.openSelected(false)
 
-	// 全既読 → 全 Unread が false
+	// 全既読 → All=false なら一覧が空になる
 	tm, _ = m.Update(markedAllMsg{})
 	m = tm.(Model)
-	for i, n := range m.notifs {
-		if n.Unread {
-			t.Errorf("全既読後 notifs[%d] が未読のまま", i)
-		}
+	if len(m.notifs) != 0 {
+		t.Errorf("全既読後（All=false）一覧は空になるべき, got %d", len(m.notifs))
 	}
 
 	// 各種メッセージでパニックしない
@@ -76,6 +77,77 @@ func TestModelFlowHeadless(t *testing.T) {
 		tm, _ = m.Update(msg)
 		m = tm.(Model)
 		_ = m.View()
+	}
+}
+
+// loadedModel は指定 All 設定で通知 2 件を読み込んだ Model を返す。
+func loadedModel(all bool) Model {
+	cfg := config.Default()
+	cfg.All = all
+	m := newModel(nil, notify.Noop{}, cfg)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+	tm, _ = m.Update(fetchedMsg{res: github.ListResult{Notifications: sampleNotifs()}})
+	return tm.(Model)
+}
+
+// TestMarkReadRemovesWhenUnreadOnly は All=false で単一既読すると一覧から除去されることを検証する。
+func TestMarkReadRemovesWhenUnreadOnly(t *testing.T) {
+	m := loadedModel(false)
+	m.list.Select(0)
+	_ = m.markSelectedRead()
+	if len(m.notifs) != 1 {
+		t.Fatalf("1 件除去され 1 件残るべき, got %d", len(m.notifs))
+	}
+	if m.notifs[0].ID != "2" {
+		t.Errorf("残るのは ID=2, got %s", m.notifs[0].ID)
+	}
+}
+
+// TestMarkAllReadEmptiesWhenUnreadOnly は All=false で全件既読すると一覧が空になることを検証する。
+func TestMarkAllReadEmptiesWhenUnreadOnly(t *testing.T) {
+	m := loadedModel(false)
+	tm, _ := m.Update(markedAllMsg{})
+	m = tm.(Model)
+	if len(m.notifs) != 0 {
+		t.Errorf("一覧は空になるべき, got %d", len(m.notifs))
+	}
+}
+
+// TestMarkReadKeepsWhenAll は All=true で既読化しても一覧に残り Unread=false になることを検証する。
+func TestMarkReadKeepsWhenAll(t *testing.T) {
+	m := loadedModel(true)
+	m.list.Select(0)
+	_ = m.markSelectedRead()
+	if len(m.notifs) != 2 {
+		t.Fatalf("All=true では除去されず 2 件のまま, got %d", len(m.notifs))
+	}
+	if m.notifs[0].Unread {
+		t.Error("既読化した項目は Unread=false になるべき")
+	}
+	// 全件既読でも残る
+	tm, _ := m.Update(markedAllMsg{})
+	m = tm.(Model)
+	if len(m.notifs) != 2 {
+		t.Fatalf("All=true の全既読でも 2 件のまま, got %d", len(m.notifs))
+	}
+	for i, n := range m.notifs {
+		if n.Unread {
+			t.Errorf("全既読後 notifs[%d] が未読のまま", i)
+		}
+	}
+}
+
+// TestRemoveLastKeepsSelectionValid は末尾項目を既読化で除去しても選択位置が範囲内に保たれることを検証する。
+func TestRemoveLastKeepsSelectionValid(t *testing.T) {
+	m := loadedModel(false)
+	m.list.Select(1) // 末尾を選択
+	_ = m.markSelectedRead()
+	if len(m.notifs) != 1 {
+		t.Fatalf("1 件残るべき, got %d", len(m.notifs))
+	}
+	if idx := m.list.Index(); idx < 0 || idx >= len(m.notifs) {
+		t.Errorf("選択インデックスが範囲内であるべき, got %d (len=%d)", idx, len(m.notifs))
 	}
 }
 

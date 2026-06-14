@@ -137,10 +137,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = "全既読に失敗: " + msg.err.Error()
 		} else {
 			m.status = "すべて既読にしました"
-			for i := range m.notifs {
-				m.notifs[i].Unread = false
+			ids := make([]string, len(m.notifs))
+			for i, n := range m.notifs {
+				ids[i] = n.ID
 			}
-			m.refreshItems()
+			m.setReadLocal(ids...)
 		}
 		return m, clearStatusAfter()
 
@@ -238,17 +239,43 @@ func (m *Model) refreshItems() tea.Cmd {
 		items[i] = item{n: n}
 	}
 	cmd := m.list.SetItems(items)
-	if idx >= 0 && idx < len(items) {
+	// 項目除去で件数が減ったとき末尾にあふれないようクランプする。
+	if len(items) > 0 {
+		if idx < 0 {
+			idx = 0
+		}
+		if idx >= len(items) {
+			idx = len(items) - 1
+		}
 		m.list.Select(idx)
 	}
 	return cmd
 }
 
-func (m *Model) setReadLocal(id string) {
-	for i := range m.notifs {
-		if m.notifs[i].ID == id {
-			m.notifs[i].Unread = false
+// setReadLocal は既読化した ID 群をローカルに反映する（楽観的更新）。
+// 既読のみ表示（All=false）なら一覧から除去し、全件表示（All=true）なら未読フラグのみ落とす。
+func (m *Model) setReadLocal(ids ...string) {
+	if len(ids) == 0 {
+		return
+	}
+	idset := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		idset[id] = struct{}{}
+	}
+	if m.cfg.All {
+		for i := range m.notifs {
+			if _, ok := idset[m.notifs[i].ID]; ok {
+				m.notifs[i].Unread = false
+			}
 		}
+	} else {
+		kept := m.notifs[:0]
+		for _, n := range m.notifs {
+			if _, ok := idset[n.ID]; !ok {
+				kept = append(kept, n)
+			}
+		}
+		m.notifs = kept
 	}
 	m.refreshItems()
 }
