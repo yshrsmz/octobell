@@ -22,6 +22,27 @@ type Config struct {
 	MarkReadOnOpen bool `json:"mark_read_on_open"`
 	// Notify は OS デスクトップ通知を有効にするか。
 	Notify bool `json:"notify"`
+	// TerminalNotify は通知バックエンドの選択を制御する（auto | osc777 | osc9 | off）。
+	// auto は対応端末（Ghostty）を検出したら OSC 777 を使い、未検出なら Beeep にフォールバックする。
+	TerminalNotify string `json:"terminal_notify"`
+}
+
+// terminal_notify の取り得る値。
+const (
+	TerminalNotifyAuto   = "auto"
+	TerminalNotifyOSC777 = "osc777"
+	TerminalNotifyOSC9   = "osc9"
+	TerminalNotifyOff    = "off"
+)
+
+// normalizeTerminalNotify は未知の terminal_notify 値を既定（auto）に丸める。
+func normalizeTerminalNotify(v string) string {
+	switch v {
+	case TerminalNotifyAuto, TerminalNotifyOSC777, TerminalNotifyOSC9, TerminalNotifyOff:
+		return v
+	default:
+		return TerminalNotifyAuto
+	}
 }
 
 // Default は既定設定を返す。
@@ -33,6 +54,7 @@ func Default() Config {
 		PerPage:        50,
 		MarkReadOnOpen: true,
 		Notify:         true,
+		TerminalNotify: TerminalNotifyAuto,
 	}
 }
 
@@ -67,5 +89,7 @@ func Load() (Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return cfg, err
 	}
+	// 不正な terminal_notify 値は既定（auto）に丸める。
+	cfg.TerminalNotify = normalizeTerminalNotify(cfg.TerminalNotify)
 	return cfg, nil
 }

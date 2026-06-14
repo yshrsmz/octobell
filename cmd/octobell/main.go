@@ -59,14 +59,28 @@ func main() {
 		return
 	}
 
-	var notifier notify.Notifier = notify.Noop{}
-	if cfg.Notify {
-		notifier = notify.Beeep{}
-	}
+	// 設定・端末検出・tty 有無から単一の Notifier を選ぶ（Beeep と OSC は排他）。
+	notifier := notify.Select(cfg.Notify, terminalNotifyMode(cfg.TerminalNotify), os.Getenv)
 
 	if err := tui.Run(ctx, client, notifier, cfg); err != nil {
 		fmt.Fprintln(os.Stderr, "エラー:", err)
 		os.Exit(1)
+	}
+}
+
+// terminalNotifyMode は config の terminal_notify 文字列を notify.Mode へ変換する。
+// 文字列の語彙は config が一元管理し、ここが notify の型付き enum への唯一の橋渡し点。
+// 未知値（config 側で正規化済みのはずだが念のため）は auto 扱い。
+func terminalNotifyMode(v string) notify.Mode {
+	switch v {
+	case config.TerminalNotifyOSC777:
+		return notify.ModeOSC777
+	case config.TerminalNotifyOSC9:
+		return notify.ModeOSC9
+	case config.TerminalNotifyOff:
+		return notify.ModeOff
+	default: // config.TerminalNotifyAuto およびその他
+		return notify.ModeAuto
 	}
 }
 

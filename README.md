@@ -68,7 +68,8 @@ octobell --version
   "participating": false,
   "per_page": 50,
   "mark_read_on_open": true,
-  "notify": true
+  "notify": true,
+  "terminal_notify": "auto"
 }
 ```
 
@@ -80,6 +81,19 @@ octobell --version
 | `per_page` | `50` | 1 ページあたりの取得件数（最大 50） |
 | `mark_read_on_open` | `true` | `enter` で開いたときに既読化する |
 | `notify` | `true` | OS デスクトップ通知を有効にする |
+| `terminal_notify` | `"auto"` | 通知バックエンドの選択。`auto`（対応端末を検出したら OSC、未検出なら beeep）／ `osc777` ／ `osc9` ／ `off`（常に beeep）。不正値は `auto` 扱い |
+
+### 通知バックエンド（`terminal_notify`）
+
+通常は OS 通知（beeep: macOS は osascript / terminal-notifier、Linux は D-Bus / notify-send）を使う。
+対応端末（現状 **Ghostty**）では、OSC エスケープシーケンスで端末自身が通知を出す経路も選べる。外部プロセスを起動せず軽量。
+
+- `auto`（既定）: `TERM=xterm-ghostty` / `TERM_PROGRAM=ghostty` を検出したら **OSC 777**、未検出なら beeep。
+- `osc777` / `osc9`: 端末検出によらず OSC を強制（SSH 越し等、検出が効かない場合に明示指定する）。
+- `off`: 常に beeep。
+- beeep と OSC は同時に使わない（同じ通知が二重に出るのを防ぐため、いずれか一方のみ）。`--no-notify` / `notify=false` のときは何も送らない。
+- OSC を選んでも controlling terminal（`/dev/tty`）を開けない場合（パイプ経由・`--once` 等）は beeep にフォールバックする。
+- 注意: OSC は端末アプリ（Ghostty）名義の通知になる（octobell 名義にはならない）。また配信成否は検知できず、Ghostty 側で `desktop-notifications` が無効だと黙って出ない。
 
 ## 設計メモ
 

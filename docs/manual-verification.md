@@ -58,6 +58,17 @@ go build -o octobell ./cmd/octobell
 - **Linux（デスクトップ）**: D-Bus または `notify-send`（`libnotify` 要）。
   headless/SSH 環境では通知が出ない場合がある。その場合は `--no-notify` で TUI のみ利用するか、`notify: false` を設定
 
+#### 端末ネイティブ通知（OSC / `terminal_notify`）
+
+> OSC 経路は自動検証できない（OSC は戻り値を持たず、配信成否を検知できない）。Ghostty 実機で目視確認する。
+
+- [ ] **Ghostty で OSC 通知が出る**: Ghostty で `terminal_notify: "auto"`（または `"osc777"`）にして起動し、新着で通知センターにバナーが出る。通知名義は **Ghostty**（octobell 名義ではない）
+- [ ] **desktop-notifications off 時に静かに失敗する**: Ghostty 設定で `desktop-notifications = false` にすると、新着でもバナーが出ず、かつアプリは異常終了・エラー表示しない（fire-and-forget）
+- [ ] **alt-screen 描画が崩れない**: OSC 通知が出る瞬間に TUI 画面の表示崩れ・ちらつき・エスケープ列の漏れが無い
+- [ ] **二重通知が出ない**: OSC 経路選択時、同じ新着で beeep 経路の通知が重複して出ない（バナーは 1 つ）
+- [ ] **フォールバック**: 非対応端末（例: VS Code 統合端末）で `auto` なら beeep 経路になり通知が出る。`./octobell --once`（tty 無し相当）や `osc777` 指定でも beeep に落ちて動作する
+- [ ] **`off`**: `terminal_notify: "off"` で常に beeep 経路になる
+
 ### 4. 設定ファイル
 
 - [ ] `~/.config/octobell/config.json` を作成し、`poll_seconds` / `participating` / `all` 等が反映される
