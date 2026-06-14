@@ -1,3 +1,15 @@
 {
-    "language": "ja"
+  "language": "ja",
+  "extraKnownMarketplaces": {
+    "yshrsmz-cc-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "yshrsmz/cc-plugins"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "github@yshrsmz-cc-plugins": true,
+    "meta@yshrsmz-cc-plugins": true
+  }
 }
