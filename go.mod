@@ -5,12 +5,12 @@ go 1.26.4
 require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.7
+	charm.land/lipgloss/v2 v2.0.2
 	github.com/cli/go-gh/v2 v2.13.0
 	github.com/gen2brain/beeep v0.11.2
 )
 
 require (
-	charm.land/lipgloss/v2 v2.0.2 // indirect
 	git.sr.ht/~jackmordaunt/go-toast v1.1.2 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect

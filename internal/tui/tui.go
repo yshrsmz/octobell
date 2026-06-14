@@ -11,6 +11,7 @@ import (
 	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/cli/go-gh/v2/pkg/browser"
 
 	"github.com/yshrsmz/octobell/internal/config"
@@ -57,6 +58,7 @@ func newModel(client *github.Client, notifier notify.Notifier, cfg config.Config
 	km := newKeyMap()
 	l.AdditionalShortHelpKeys = km.bindings
 	l.AdditionalFullHelpKeys = km.bindings
+	applyContrastStyles(&l)
 
 	return Model{
 		client:   client,
@@ -69,6 +71,26 @@ func newModel(client *github.Client, notifier notify.Notifier, cfg config.Config
 		spinner:  spinner.New(spinner.WithSpinner(spinner.Dot)),
 		loading:  true,
 	}
+}
+
+// applyContrastStyles は空表示「No items.」とヘルプ（キーバインド一覧）の前景色を
+// bubbles デフォルトの低コントラストなグレーから明るめに上書きする。ダークターミナルで
+// lightDark() がダーク側の極端に暗い色（desc #4A4A4A 等）を返し沈むのを防ぐ。
+// 色のみの変更で、キーバインド文言やロジックには影響しない。
+func applyContrastStyles(l *list.Model) {
+	l.Styles.NoItems = l.Styles.NoItems.Foreground(lipgloss.Color("#9B9B9B"))
+
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#909090"))
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#B2B2B2"))
+	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#626262"))
+
+	l.Help.Styles.ShortKey = keyStyle
+	l.Help.Styles.FullKey = keyStyle
+	l.Help.Styles.ShortDesc = descStyle
+	l.Help.Styles.FullDesc = descStyle
+	l.Help.Styles.ShortSeparator = sepStyle
+	l.Help.Styles.FullSeparator = sepStyle
+	l.Help.Styles.Ellipsis = sepStyle
 }
 
 // Init は初回フェッチ・スピナー・ポーリングタイマーを起動する。
