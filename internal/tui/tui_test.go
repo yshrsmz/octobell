@@ -151,6 +151,86 @@ func TestRemoveLastKeepsSelectionValid(t *testing.T) {
 	}
 }
 
+// recordingNotifier は Notify の呼び出し回数を記録するテスト用 Notifier。
+type recordingNotifier struct{ calls int }
+
+func (r *recordingNotifier) Notify(string, string) error { r.calls++; return nil }
+
+// TestManualRefreshForceSkipsConditional は手動更新（force=true）が
+// If-Modified-Since を送らない（無条件取得になる）ことを検証する。
+func TestManualRefreshForceSkipsConditional(t *testing.T) {
+	m := newModel(nil, notify.Noop{}, config.Default())
+	m.lastModified = "Thu, 01 Jan 2026 00:00:00 GMT"
+	if since := m.conditionalSince(true); since != "" {
+		t.Errorf("手動更新は If-Modified-Since を送らない（空文字）べき, got %q", since)
+	}
+}
+
+// TestAutoPollKeepsConditional は自動ポーリング（force=false）が
+// 直近の Last-Modified を条件付きリクエストに使うことを検証する。
+func TestAutoPollKeepsConditional(t *testing.T) {
+	m := newModel(nil, notify.Noop{}, config.Default())
+	m.lastModified = "Thu, 01 Jan 2026 00:00:00 GMT"
+	if since := m.conditionalSince(false); since != m.lastModified {
+		t.Errorf("自動ポーリングは直近の Last-Modified を送るべき, got %q want %q", since, m.lastModified)
+	}
+}
+
+// TestForceFetchUpdatesLastModified は強制取得の 200 応答後に m.lastModified が
+// 更新され（handleFetched は NotModified チェック前に無条件更新）、次回の自動ポーリングが
+// 条件付きに戻ることを検証する。
+func TestForceFetchUpdatesLastModified(t *testing.T) {
+	m := loadedModel(false)
+	tm, _ := m.Update(fetchedMsg{res: github.ListResult{
+		Notifications: sampleNotifs(), LastModified: "Fri, 02 Jan 2026 12:00:00 GMT",
+	}})
+	m = tm.(Model)
+	if m.lastModified != "Fri, 02 Jan 2026 12:00:00 GMT" {
+		t.Fatalf("200 応答で lastModified が更新されるべき, got %q", m.lastModified)
+	}
+	if since := m.conditionalSince(false); since != "Fri, 02 Jan 2026 12:00:00 GMT" {
+		t.Errorf("次回の自動ポーリングは更新後の Last-Modified を条件付きに使うべき, got %q", since)
+	}
+}
+
+// TestForceFetchSameSetNoNotification は強制取得で同じ未読セットが返っても
+// Differ が空を返し OS 通知が発火しないこと（304 スキップが無くなっても通知スパムしない）を検証する。
+func TestForceFetchSameSetNoNotification(t *testing.T) {
+	rec := &recordingNotifier{}
+	cfg := config.Default()
+	m := newModel(nil, rec, cfg)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+
+	// 1 回目の取得（初回は Differ がバックログ全件を抑制 → 通知なし）。
+	tm, cmd := m.Update(fetchedMsg{res: github.ListResult{Notifications: sampleNotifs()}})
+	m = tm.(Model)
+	runCmd(cmd)
+
+	// 2 回目（強制取得相当）: 同じ未読セットなので Differ は空 → 通知なし。
+	tm, cmd = m.Update(fetchedMsg{res: github.ListResult{Notifications: sampleNotifs()}})
+	m = tm.(Model)
+	runCmd(cmd)
+
+	if rec.calls != 0 {
+		t.Errorf("同じ未読セットの再取得では OS 通知が発火しないべき, got calls=%d", rec.calls)
+	}
+}
+
+// runCmd は Cmd（および tea.Batch が返す BatchMsg 内の子 Cmd）を再帰的に実行する。
+// client(nil) に触れない notify/refresh 系の検証に使う。
+func runCmd(cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			runCmd(c)
+		}
+	}
+}
+
 // TestQuitKey は q キーで Quit コマンドが返ることを検証する。
 func TestQuitKey(t *testing.T) {
 	m := newModel(nil, notify.Noop{}, config.Default())

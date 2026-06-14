@@ -73,7 +73,7 @@ func newModel(client *github.Client, notifier notify.Notifier, cfg config.Config
 
 // Init は初回フェッチ・スピナー・ポーリングタイマーを起動する。
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.spinner.Tick, m.fetchCmd(), m.tickCmd())
+	return tea.Batch(m.spinner.Tick, m.fetchCmd(false), m.tickCmd())
 }
 
 // pollSeconds は max(ユーザー設定, X-Poll-Interval) を返す（GitHub の下限を尊重）。
@@ -94,10 +94,22 @@ func (m Model) tickCmd() tea.Cmd {
 	})
 }
 
-func (m Model) fetchCmd() tea.Cmd {
+// conditionalSince は条件付きリクエストに使う If-Modified-Since 値を返す。
+// force（手動更新）のときは空文字を返し、304 スキップを避けて無条件取得にする。
+func (m Model) conditionalSince(force bool) string {
+	if force {
+		return ""
+	}
+	return m.lastModified
+}
+
+// fetchCmd は通知一覧を取得する Cmd を返す。force=true（手動更新）のときは
+// If-Modified-Since を付けず常に最新を取得する。force=false（自動ポーリング）は
+// 直近の Last-Modified を条件付きリクエストに使いレート制限を節約する。
+func (m Model) fetchCmd(force bool) tea.Cmd {
 	client := m.client
 	opts := github.ListOptions{All: m.cfg.All, Participating: m.cfg.Participating, PerPage: m.cfg.PerPage}
-	lm := m.lastModified
+	lm := m.conditionalSince(force)
 	return func() tea.Msg {
 		res, err := client.List(context.Background(), opts, lm)
 		return fetchedMsg{res: res, err: err}
@@ -115,7 +127,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmds []tea.Cmd
 		if !m.loading {
 			m.loading = true
-			cmds = append(cmds, m.fetchCmd())
+			cmds = append(cmds, m.fetchCmd(false))
 		}
 		cmds = append(cmds, m.tickCmd())
 		return m, tea.Batch(cmds...)
@@ -188,7 +200,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, m.keys.Refresh):
 				if !m.loading {
 					m.loading = true
-					return m, m.fetchCmd()
+					return m, m.fetchCmd(true)
 				}
 				return m, nil
 			}
