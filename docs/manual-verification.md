@@ -34,6 +34,10 @@ go build -o octobell ./cmd/octobell
 - [ ] `/` でフィルタが効く（リポ名・タイトル等で絞り込み。`42` や `#42` でも該当 Issue/PR が絞り込める）
 - [ ] `?` でヘルプ（octobell 独自キー含む）が開閉する
 - [ ] **ダークターミナルで文字色が沈まない**: 通知 0 件時の「No items.」、および short help（最下部のキー一覧）と `?` の full help の key / desc / 区切りが、背景に埋もれず読める明るさで表示される（bubbles デフォルトの薄いグレーに戻っていない）
+- [ ] **state_change の実状態付記**: `reason=state_change` の Issue/PR の副行が `state_change(merged)` のように `(実状態)` 付きで表示される。括弧内の状態のみ色が付く（`state_change` 本体は通常色）。merged・closed-completed=紫 / open=緑 / draft・closed-not_planned=灰 / closed(PR 未マージ)=赤。取得が届くまで（一瞬）は `state_change` のみ表示で、一覧描画はブロックされない
+- [ ] **他 reason・対象外種別は従来表示**: `mention` / `review_requested` など `state_change` 以外の通知、および Commit / Release / Discussion 等は副行に `(実状態)` が付かず reason のみが出る
+- [ ] **実状態でフィルタできる**: `/` フィルタに `merged` 等を入力すると、その実状態の Issue/PR が絞り込まれる
+- [ ] **`enrich_state: false` で無効化**: 設定で `enrich_state` を `false` にすると `(実状態)` の付記が消え、追加取得も行われない（従来どおり reason のみ表示）
 - [ ] 最下部のステータス行に「最終更新 / 間隔」が出る
 - [ ] `ctrl+r` で手動更新すると一覧が最新化される（別端末で既読化した項目が消える等、`304 Not Modified` でスキップされず必ず反映される）
 - [ ] `q` で終了する

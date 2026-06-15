@@ -2,8 +2,10 @@ package tui
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -11,6 +13,11 @@ import (
 	"github.com/yshrsmz/octobell/internal/github"
 	"github.com/yshrsmz/octobell/internal/notify"
 )
+
+// reANSI は表示検証のため ANSI エスケープ（色コード）を除去する。
+var reANSI = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(s string) string { return reANSI.ReplaceAllString(s, "") }
 
 func sampleNotifs() []github.Notification {
 	repo := github.Repository{FullName: "o/r", HTMLURL: "https://github.com/o/r"}
@@ -53,6 +60,114 @@ func TestItemTitleShowsNumber(t *testing.T) {
 	// title 等に "#" が含まれても誤検知しないよう、期待値と完全一致で確認する。
 	if got, want := commit.FilterValue(), "o/r Commit subscribed Build"; got != want {
 		t.Errorf("番号なし種別の FilterValue = %q, want %q（番号を付さない）", got, want)
+	}
+}
+
+// stateChangeNotif は reason=state_change の PR 通知を返す。
+func stateChangeNotif(id string, updated time.Time) github.Notification {
+	return github.Notification{
+		ID: id, Unread: true, Reason: "state_change", UpdatedAt: updated,
+		Repository: github.Repository{FullName: "o/r", HTMLURL: "https://github.com/o/r"},
+		Subject:    github.Subject{Title: "PR x", Type: "PullRequest", URL: "https://api.github.com/repos/o/r/pulls/9"},
+	}
+}
+
+// TestDescriptionEnrichment はエンリッチ前は reason のみ、エンリッチ後は state_change(<状態>)
+// が副行に出ることを検証する（色コードは除去して比較）。
+func TestDescriptionEnrichment(t *testing.T) {
+	before := item{n: stateChangeNotif("9", time.Unix(100, 0))}
+	if got := stripANSI(before.Description()); got != "o/r · PullRequest · state_change" {
+		t.Errorf("エンリッチ前の副行 = %q, want %q", got, "o/r · PullRequest · state_change")
+	}
+
+	after := item{n: stateChangeNotif("9", time.Unix(100, 0)), state: github.StateMerged}
+	if got := stripANSI(after.Description()); got != "o/r · PullRequest · state_change(merged)" {
+		t.Errorf("エンリッチ後の副行 = %q, want %q", got, "o/r · PullRequest · state_change(merged)")
+	}
+	// 着色されている（生文字列に ANSI を含む）こと。
+	if after.Description() == stripANSI(after.Description()) {
+		t.Error("(merged) 部分は色付けされ ANSI を含むべき")
+	}
+	// FilterValue に実状態が含まれる。
+	if !strings.Contains(after.FilterValue(), "merged") {
+		t.Errorf("FilterValue に merged を含むべき, got %q", after.FilterValue())
+	}
+}
+
+// TestDescriptionOtherReasonNoBadge は state があっても reason が state_change 以外なら
+// 付記しないことを検証する（item.state は通常 state_change 以外には付かないが防御的に確認）。
+func TestDescriptionOtherReasonNoBadge(t *testing.T) {
+	n := github.Notification{
+		Reason: "mention", Repository: github.Repository{FullName: "o/r"},
+		Subject: github.Subject{Title: "x", Type: "PullRequest", URL: "https://api.github.com/repos/o/r/pulls/9"},
+	}
+	it := item{n: n, state: github.StateMerged}
+	if got := stripANSI(it.Description()); got != "o/r · PullRequest · mention" {
+		t.Errorf("他 reason は付記しない, got %q", got)
+	}
+}
+
+// TestEnrichDisabledNoCmd は enrich_state=false のとき handleFetched が
+// エンリッチ Cmd を発行しないことを検証する。
+func TestEnrichDisabledNoCmd(t *testing.T) {
+	cfg := config.Default()
+	cfg.EnrichState = false
+	m := newModel(nil, notify.Noop{}, cfg)
+	tm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = tm.(Model)
+	m.notifs = []github.Notification{stateChangeNotif("9", time.Unix(100, 0))}
+	if cmd := m.enrichCmds(); cmd != nil {
+		t.Error("enrich_state=false ではエンリッチ Cmd を発行しないべき")
+	}
+}
+
+// TestEnrichCacheHitSkips は updated_at 一致のキャッシュがあれば再取得 Cmd を出さず、
+// 不一致なら出すことを検証する。
+func TestEnrichCacheHitSkips(t *testing.T) {
+	m := newModel(nil, notify.Noop{}, config.Default())
+	updated := time.Unix(100, 0)
+	m.notifs = []github.Notification{stateChangeNotif("9", updated)}
+
+	// キャッシュ無し → Cmd あり
+	if cmd := m.enrichCmds(); cmd == nil {
+		t.Fatal("キャッシュ無しではエンリッチ Cmd を出すべき")
+	}
+	// updated_at 一致キャッシュ → Cmd なし
+	m.enrichCache["9"] = enrichEntry{updatedAt: updated, state: github.StateMerged}
+	if cmd := m.enrichCmds(); cmd != nil {
+		t.Error("updated_at 一致のキャッシュがあれば再取得しないべき")
+	}
+	// updated_at 不一致 → Cmd あり
+	m.notifs = []github.Notification{stateChangeNotif("9", time.Unix(200, 0))}
+	if cmd := m.enrichCmds(); cmd == nil {
+		t.Error("updated_at が変われば再取得するべき")
+	}
+}
+
+// TestHandleEnrichedUpdatesDisplay は enrichedMsg 成功でキャッシュが更新され、
+// 副行が state_change(<状態>) に切り替わることを検証する。失敗は据え置く。
+func TestHandleEnrichedUpdatesDisplay(t *testing.T) {
+	m := loadedModel(false)
+	updated := time.Unix(100, 0)
+	m.notifs = []github.Notification{stateChangeNotif("9", updated)}
+	_ = m.refreshItems()
+
+	// 成功メッセージ
+	tm, _ := m.Update(enrichedMsg{id: "9", updatedAt: updated, state: github.StateMerged})
+	m = tm.(Model)
+	if e, ok := m.enrichCache["9"]; !ok || e.state != github.StateMerged {
+		t.Fatalf("キャッシュが merged で更新されるべき, got %+v ok=%v", e, ok)
+	}
+	it := m.list.Items()[0].(item)
+	if it.state != github.StateMerged {
+		t.Errorf("item.state が merged に反映されるべき, got %q", it.state)
+	}
+
+	// 失敗メッセージは据え置き（キャッシュを壊さない）
+	tm, _ = m.Update(enrichedMsg{id: "9", updatedAt: updated, err: errors.New("boom")})
+	m = tm.(Model)
+	if m.enrichCache["9"].state != github.StateMerged {
+		t.Error("失敗メッセージは既存キャッシュを据え置くべき")
 	}
 }
 
@@ -108,6 +223,7 @@ func TestModelFlowHeadless(t *testing.T) {
 		markedMsg{err: nil}, markedMsg{err: errors.New("boom")},
 		fetchedMsg{err: errors.New("取得失敗")},
 		fetchedMsg{res: github.ListResult{NotModified: true, PollInterval: 90}},
+		enrichedMsg{id: "1", state: github.StateOpen}, enrichedMsg{id: "1", err: errors.New("boom")},
 	} {
 		tm, _ = m.Update(msg)
 		m = tm.(Model)

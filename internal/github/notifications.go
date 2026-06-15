@@ -73,3 +73,70 @@ func (n Notification) SubjectNumber() string {
 	}
 	return ""
 }
+
+// ReasonStateChange は GitHub Notifications の reason フィールドの「状態変化」値。
+// 実状態のエンリッチ対象判定（Enrichable）と TUI の副行整形で共有する。
+const ReasonStateChange = "state_change"
+
+// Enrichable は、この通知が subject 詳細の追加取得（実状態のエンリッチ）対象かを返す。
+// reason=state_change の Issue / PullRequest で subject.url を持つもののみが対象。
+func (n Notification) Enrichable() bool {
+	if n.Reason != ReasonStateChange || n.Subject.URL == "" {
+		return false
+	}
+	return n.Subject.Type == "Issue" || n.Subject.Type == "PullRequest"
+}
+
+// SubjectState は Issue / PullRequest の実状態。Notifications API は返さないため
+// subject 詳細を追加取得して導出する。
+type SubjectState string
+
+const (
+	StateUnknown          SubjectState = ""                   // 未取得・対象外
+	StateOpen             SubjectState = "open"               // Issue / PR ともに open
+	StateDraft            SubjectState = "draft"              // PR の draft
+	StateMerged           SubjectState = "merged"             // PR が merge 済み
+	StateClosed           SubjectState = "closed"             // PR が未マージで close
+	StateClosedCompleted  SubjectState = "closed-completed"   // Issue を completed で close
+	StateClosedNotPlanned SubjectState = "closed-not_planned" // Issue を not_planned で close
+)
+
+// String は表示用の状態文字列を返す。
+func (s SubjectState) String() string { return string(s) }
+
+// subjectDetail は Issue / PullRequest 詳細レスポンスのうち状態導出に必要なフィールド。
+type subjectDetail struct {
+	State       string `json:"state"`        // open | closed（Issue / PR 共通）
+	StateReason string `json:"state_reason"` // completed | not_planned | reopened（Issue のみ）
+	Merged      bool   `json:"merged"`       // PR のみ
+	Draft       bool   `json:"draft"`        // PR のみ
+}
+
+// deriveState は subject の種別と詳細から実状態を導出する。
+// PR: merged → merged / closed（未マージ）→ closed / draft → draft / それ以外 → open
+// Issue: closed のとき state_reason で分岐（not_planned 以外は completed 扱い）/ それ以外 → open
+func deriveState(subjectType string, d subjectDetail) SubjectState {
+	switch subjectType {
+	case "PullRequest":
+		switch {
+		case d.Merged:
+			return StateMerged
+		case d.State == "closed":
+			return StateClosed
+		case d.Draft:
+			return StateDraft
+		default:
+			return StateOpen
+		}
+	case "Issue":
+		if d.State == "closed" {
+			if d.StateReason == "not_planned" {
+				return StateClosedNotPlanned
+			}
+			return StateClosedCompleted
+		}
+		return StateOpen
+	default:
+		return StateUnknown
+	}
+}

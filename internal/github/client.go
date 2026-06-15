@@ -81,12 +81,10 @@ func (c *Client) List(ctx context.Context, opts ListOptions, lastModified string
 	}
 	q.Set("per_page", strconv.Itoa(per))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"notifications?"+q.Encode(), nil)
+	req, err := newAPIGetRequest(ctx, c.base+"notifications?"+q.Encode())
 	if err != nil {
 		return ListResult{}, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if lastModified != "" {
 		req.Header.Set("If-Modified-Since", lastModified)
 	}
@@ -121,9 +119,54 @@ func (c *Client) List(ctx context.Context, opts ListOptions, lastModified string
 		}
 		return res, nil
 	default:
-		body, _ := io.ReadAll(resp.Body)
-		return res, fmt.Errorf("通知取得に失敗 (%s): %s", resp.Status, strings.TrimSpace(string(body)))
+		return res, fmt.Errorf("通知取得に失敗 (%s): %s", resp.Status, errorBody(resp))
 	}
+}
+
+// newAPIGetRequest は GitHub API への GET リクエストを生成し共通ヘッダ（Accept / API バージョン）を付与する。
+func newAPIGetRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	return req, nil
+}
+
+// errorBody はエラー応答の本文を読み取り、末尾空白を除去して返す（エラーメッセージ整形用）。
+func errorBody(resp *http.Response) string {
+	body, _ := io.ReadAll(resp.Body)
+	return strings.TrimSpace(string(body))
+}
+
+// FetchSubjectState は通知の subject 詳細（Issue / PullRequest）を取得し実状態を導出する。
+// 取得は読み取り（GET）のため、List と同様に素の *http.Client を使う。
+// エンリッチ対象外（reason≠state_change・対象外種別・subject.url 空）の通知は
+// 取得せず StateUnknown を返す。
+func (c *Client) FetchSubjectState(ctx context.Context, n Notification) (SubjectState, error) {
+	if !n.Enrichable() {
+		return StateUnknown, nil
+	}
+	req, err := newAPIGetRequest(ctx, n.Subject.URL)
+	if err != nil {
+		return StateUnknown, err
+	}
+
+	resp, err := c.httpc.Do(req)
+	if err != nil {
+		return StateUnknown, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return StateUnknown, fmt.Errorf("subject 取得に失敗 (%s): %s", resp.Status, errorBody(resp))
+	}
+	var d subjectDetail
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return StateUnknown, fmt.Errorf("subject のデコード: %w", err)
+	}
+	return deriveState(n.Subject.Type, d), nil
 }
 
 // MarkThreadRead は単一スレッドを既読にする（PATCH /notifications/threads/{id}、205 Reset Content）。

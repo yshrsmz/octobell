@@ -31,6 +31,23 @@ type markedAllMsg struct{ err error }
 type statusMsg string
 type clearStatusMsg struct{}
 
+// enrichedMsg は subject 実状態の追加取得 1 件分の結果。
+type enrichedMsg struct {
+	id        string
+	updatedAt time.Time
+	state     github.SubjectState
+	err       error
+}
+
+// enrichEntry は実状態キャッシュの値。updatedAt が一致する間だけ state を有効とみなす。
+type enrichEntry struct {
+	updatedAt time.Time
+	state     github.SubjectState
+}
+
+// maxConcurrentEnrich は subject 実状態の同時取得数の上限（レート制限尊重）。
+const maxConcurrentEnrich = 4
+
 // Model は TUI の状態。
 type Model struct {
 	client   *github.Client
@@ -43,13 +60,16 @@ type Model struct {
 	keys    keyMap
 	spinner spinner.Model
 
-	notifs       []github.Notification
-	lastModified string
-	pollInterval int // 直近の X-Poll-Interval（秒）
+	notifs            []github.Notification
+	lastModified      string
+	pollInterval      int // 直近の X-Poll-Interval（秒）
 	loading           bool
 	status            string
 	lastSync          time.Time
 	confirmingAllRead bool // ctrl+a 二度押し確認の途中か
+
+	enrichCache map[string]enrichEntry // 通知ID -> 実状態（updated_at で無効化）
+	enrichSem   chan struct{}          // 実状態取得の同時実行数を絞るセマフォ
 }
 
 func newModel(client *github.Client, notifier notify.Notifier, cfg config.Config) Model {
@@ -70,6 +90,9 @@ func newModel(client *github.Client, notifier notify.Notifier, cfg config.Config
 		keys:     km,
 		spinner:  spinner.New(spinner.WithSpinner(spinner.Dot)),
 		loading:  true,
+
+		enrichCache: make(map[string]enrichEntry),
+		enrichSem:   make(chan struct{}, maxConcurrentEnrich),
 	}
 }
 
@@ -157,6 +180,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fetchedMsg:
 		m.loading = false
 		return m.handleFetched(msg)
+
+	case enrichedMsg:
+		return m.handleEnriched(msg)
 
 	case markedMsg:
 		if msg.err != nil {
@@ -263,14 +289,73 @@ func (m Model) handleFetched(msg fetchedMsg) (tea.Model, tea.Cmd) {
 	if len(fresh) > 0 {
 		notifyCmd = m.notifyCmd(fresh)
 	}
-	return m, tea.Batch(cmd, notifyCmd)
+	return m, tea.Batch(cmd, notifyCmd, m.enrichCmds())
+}
+
+// enrichCmds はエンリッチ対象（reason=state_change の Issue/PR でキャッシュミス）の
+// 通知について subject 実状態を非同期取得する Cmd 群を Batch にして返す。
+// enrich_state が無効、または対象が無ければ nil を返し追加取得を行わない。
+func (m Model) enrichCmds() tea.Cmd {
+	if !m.cfg.EnrichState {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, n := range m.notifs {
+		if !n.Enrichable() {
+			continue
+		}
+		// updated_at が一致するキャッシュがあれば再取得しない。
+		if _, ok := m.cachedState(n); ok {
+			continue
+		}
+		cmds = append(cmds, m.enrichCmd(n))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+// enrichCmd は通知 1 件の subject 実状態を取得する Cmd。enrichSem で同時実行数を絞る。
+func (m Model) enrichCmd(n github.Notification) tea.Cmd {
+	client := m.client
+	sem := m.enrichSem
+	return func() tea.Msg {
+		sem <- struct{}{}
+		defer func() { <-sem }()
+		state, err := client.FetchSubjectState(context.Background(), n)
+		return enrichedMsg{id: n.ID, updatedAt: n.UpdatedAt, state: state, err: err}
+	}
+}
+
+// cachedState は通知 n に対応する有効な実状態を返す。updated_at が一致するキャッシュが
+// あるときのみ (state, true) を返す。無い・不一致（状態が変わった可能性）なら
+// (StateUnknown, false) を返し、呼び出し側は再取得 or reason 表示にフォールバックする。
+func (m Model) cachedState(n github.Notification) (github.SubjectState, bool) {
+	if e, ok := m.enrichCache[n.ID]; ok && e.updatedAt.Equal(n.UpdatedAt) {
+		return e.state, true
+	}
+	return github.StateUnknown, false
+}
+
+// handleEnriched は実状態の取得結果を反映する。成功はキャッシュ更新＋副行を再描画、
+// 失敗・対象外（StateUnknown）は当該項目を reason のみ表示のまま据え置く（局所フォールバック）。
+func (m Model) handleEnriched(msg enrichedMsg) (tea.Model, tea.Cmd) {
+	if msg.err != nil || msg.state == github.StateUnknown {
+		return m, nil
+	}
+	m.enrichCache[msg.id] = enrichEntry{updatedAt: msg.updatedAt, state: msg.state}
+	return m, m.refreshItems()
 }
 
 func (m *Model) refreshItems() tea.Cmd {
 	idx := m.list.Index()
 	items := make([]list.Item, len(m.notifs))
 	for i, n := range m.notifs {
-		items[i] = item{n: n}
+		// updated_at が一致するキャッシュのみ有効な実状態として表示に使う。
+		// 不一致（状態が変わった可能性）の項目は再取得が届くまで reason 表示に留める。
+		st, _ := m.cachedState(n)
+		items[i] = item{n: n, state: st}
 	}
 	cmd := m.list.SetItems(items)
 	// 項目除去で件数が減ったとき末尾にあふれないようクランプする。

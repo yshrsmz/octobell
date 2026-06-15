@@ -62,3 +62,35 @@ func TestLoadTerminalNotifyUnknownFallsBackToAuto(t *testing.T) {
 		t.Fatalf("TerminalNotify = %q, want %q (unknown should fall back)", cfg.TerminalNotify, TerminalNotifyAuto)
 	}
 }
+
+func TestDefaultEnrichState(t *testing.T) {
+	if got := Default().EnrichState; got != true {
+		t.Fatalf("Default().EnrichState = %v, want true", got)
+	}
+}
+
+func TestLoadEnrichStateOverrideFalse(t *testing.T) {
+	writeConfig(t, `{"enrich_state": false}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.EnrichState != false {
+		t.Fatalf("EnrichState = %v, want false", cfg.EnrichState)
+	}
+}
+
+func TestLoadPartialKeepsEnrichStateDefault(t *testing.T) {
+	// enrich_state を含まない部分設定でも既定 true を維持し、他キーは上書きされる。
+	writeConfig(t, `{"poll_seconds": 30}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.PollSeconds != 30 {
+		t.Fatalf("PollSeconds = %d, want 30", cfg.PollSeconds)
+	}
+	if cfg.EnrichState != true {
+		t.Fatalf("EnrichState = %v, want true (default kept)", cfg.EnrichState)
+	}
+}

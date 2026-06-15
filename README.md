@@ -9,6 +9,7 @@ GitHub の通知（Notifications）を定期的に取得して未読管理する
 - **効率的なポーリング**: `X-Poll-Interval` ヘッダを尊重し、`If-Modified-Since` 条件付きリクエストで変更がなければ `304 Not Modified`（API レート制限を消費しない）
 - **OS デスクトップ通知**: 新着（前回ポーリングからの差分）のみを通知（macOS / Linux）
 - **TUI で未読管理**: 一覧・既読化・ブラウザ起動・インクリメンタルフィルタ
+- **状態変化の付記**: `state_change` の Issue/PR は副行に `state_change(merged)` のように実状態（open / merged / closed など）を色付きで表示（`enrich_state`、既定 ON）
 
 ## 必要なもの
 
@@ -69,7 +70,8 @@ octobell --version
   "per_page": 50,
   "mark_read_on_open": true,
   "notify": true,
-  "terminal_notify": "auto"
+  "terminal_notify": "auto",
+  "enrich_state": true
 }
 ```
 
@@ -82,6 +84,7 @@ octobell --version
 | `mark_read_on_open` | `true` | `enter` で開いたときに既読化する |
 | `notify` | `true` | OS デスクトップ通知を有効にする |
 | `terminal_notify` | `"auto"` | 通知バックエンドの選択。`auto`（対応端末を検出したら OSC、未検出なら beeep）／ `osc777` ／ `osc9` ／ `off`（常に beeep）。不正値は `auto` 扱い |
+| `enrich_state` | `true` | `reason=state_change` の Issue/PR について subject 詳細を追加取得し、副行を `state_change(merged)` のように実状態付きで表示する。`false` で追加取得を停止し従来表示（reason のみ）に戻す |
 
 ### 通知バックエンド（`terminal_notify`）
 

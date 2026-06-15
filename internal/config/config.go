@@ -25,6 +25,9 @@ type Config struct {
 	// TerminalNotify は通知バックエンドの選択を制御する（auto | osc777 | osc9 | off）。
 	// auto は対応端末（Ghostty）を検出したら OSC 777 を使い、未検出なら Beeep にフォールバックする。
 	TerminalNotify string `json:"terminal_notify"`
+	// EnrichState は reason=state_change の Issue/PR について subject 詳細を追加取得し、
+	// 副行に実状態（open / merged / closed など）を付記するか。
+	EnrichState bool `json:"enrich_state"`
 }
 
 // terminal_notify の取り得る値。
@@ -55,6 +58,7 @@ func Default() Config {
 		MarkReadOnOpen: true,
 		Notify:         true,
 		TerminalNotify: TerminalNotifyAuto,
+		EnrichState:    true,
 	}
 }
 
