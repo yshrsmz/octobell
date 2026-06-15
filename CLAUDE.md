@@ -31,6 +31,8 @@ Go バージョンはリポジトリ単位で `mise` により固定（`go.mod` 
   - `BrowserURL()` は API URL（`subject.url`）を `repository.html_url` ベースのブラウザ URL に変換（PR は `/pulls/N`→`/pull/N`、未対応種別は repo URL にフォールバック）。Enterprise host にも追従。
 - **`internal/notify`** — OS 通知の抽象化。`Notifier` interface（`Beeep` 実機 / `Noop` 無効・headless）で実機差を吸収。`Differ` は前回ポーリングで見たスレッド ID を記憶し**新着のみ**を返す（初回起動時はバックログ全件を抑制）。
 - **`internal/tui`** — Bubble Tea v2（`charm.land/bubbletea/v2`）の Model-Update-View。ポーリングは `X-Poll-Interval` を下限に強制（`pollSeconds()` = max(設定, サーバ値)）。既読化は**楽観的更新**（再ポーリングを待たずローカル状態を即更新）。`ctrl+a`（全既読）は取り消し不能なので二度押し確認。
+  - **lipgloss v2 gotcha**: `lipgloss.Color` は型ではなく `color.Color`（`image/color`）を返す**関数**。色を返すヘルパーの戻り型は `image/color.Color` にする。
+  - **list の部分着色は文字列末尾に置く**: `item.Description` / `Title` を lipgloss で部分着色するとき、着色セグメントは末尾に連結する。中間に置くと着色末尾の reset（`\x1b[0m`）で list delegate が行全体に被せる前景色が打ち切られ、reset より後ろの文字が端末既定色に化ける（例 `state_change(merged)` で着色を `merged` だけにすると閉じ括弧が化けるため `(merged)` を括弧ごと末尾着色する）。
 - **`internal/config`** — XDG 準拠の JSON 設定（`~/.config/octobell/config.json`）。ファイルが無ければ `Default()`、存在するキーのみ上書き（部分設定可）。
 
 ### 重要な不変条件
