@@ -85,8 +85,14 @@ func TestDescriptionEnrichment(t *testing.T) {
 		t.Errorf("エンリッチ後の副行 = %q, want %q", got, "o/r · PullRequest · state_change(merged)")
 	}
 	// 着色されている（生文字列に ANSI を含む）こと。
-	if after.Description() == stripANSI(after.Description()) {
+	raw := after.Description()
+	if raw == stripANSI(raw) {
 		t.Error("(merged) 部分は色付けされ ANSI を含むべき")
+	}
+	// 閉じ括弧は着色スパンの内側にあること（reset の後ろに ) が来ると delegate 色が
+	// 打ち切られ既定色に化ける。旧実装は "\x1b[0m)" を含んでいた）。
+	if strings.Contains(raw, "\x1b[0m)") {
+		t.Errorf("閉じ括弧が着色スパンの外（reset の後ろ）にある: %q", raw)
 	}
 	// FilterValue に実状態が含まれる。
 	if !strings.Contains(after.FilterValue(), "merged") {

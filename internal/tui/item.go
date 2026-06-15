@@ -44,12 +44,14 @@ func (i item) Title() string {
 
 // Description は副行（リポ名 · 種別 · 理由）。
 // reason=state_change で実状態を取得済みの場合は理由を `state_change(<実状態>)` に整形し、
-// 括弧内の実状態のみを状態色で着色する（state_change 本体・括弧は通常色）。
+// `(<実状態>)` を括弧ごと状態色で着色する（state_change 本体は通常色）。
+// 着色は文字列末尾に置く——着色が中間にあると lipgloss の reset で delegate の
+// 副行色が打ち切られ、reset 後ろの文字（閉じ括弧）が既定色に化けるため。
 func (i item) Description() string {
 	base := i.n.Repository.FullName + " · " + i.n.Subject.Type + " · "
 	if i.n.Reason == github.ReasonStateChange && i.state != github.StateUnknown {
-		colored := lipgloss.NewStyle().Foreground(stateColor(i.state)).Render(i.state.String())
-		return base + "state_change(" + colored + ")"
+		colored := lipgloss.NewStyle().Foreground(stateColor(i.state)).Render("(" + i.state.String() + ")")
+		return base + "state_change" + colored
 	}
 	return base + i.n.Reason
 }

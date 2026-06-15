@@ -11,7 +11,7 @@ GitHub Notifications API（`GET /notifications`）は subject の状態（open/c
 ## Goals / Non-Goals
 
 **Goals:**
-- `reason=state_change` の Issue/PR で実状態（open / draft / merged / closed-completed / closed-not_planned）を `state_change(<実状態>)` 形式で副行に付記し、括弧内のみ色分けする。
+- `reason=state_change` の Issue/PR で実状態（open / draft / merged / closed-completed / closed-not_planned）を `state_change(<実状態>)` 形式で副行に付記し、`(<実状態>)` を括弧ごと色分けする。
 - 一覧描画をブロックせず、取得できた項目から順に副行を更新する。
 - 取得対象を `reason=state_change` の Issue/PR に限定し、取得＝表示を一致させる。
 - `(通知ID, updated_at)` キャッシュ・並行上限・OFF トグルで追加 API 消費を抑える。
@@ -44,9 +44,9 @@ GitHub Notifications API（`GET /notifications`）は subject の状態（open/c
 - 導出規則: Issue は `state==closed` のとき `state_reason`（`completed`/`not_planned`/`reopened`）で分岐、open は `open`。PR は `merged==true`→`merged`、`state==closed`→`closed`、`draft==true`→`draft`、それ以外 `open`。
 
 ### D5: 副行の付記と色分けは item.Description で行う
-`item.Description` は現在 `repo · type · reason`。`reason=state_change` かつエンリッチ済みなら reason を `state_change(<実状態>)` に整形し、`(<実状態>)` の括弧内のみ状態に応じた lipgloss 前景色を適用する（`state_change` 本体・他テキストは通常色）。`item` は状態を参照できる必要があるため、`item` 自体に状態フィールドを持たせて `refreshItems` で詰める（list との相性がよい）。
+`item.Description` は現在 `repo · type · reason`。`reason=state_change` かつエンリッチ済みなら reason を `state_change(<実状態>)` に整形し、`(<実状態>)` を括弧ごと状態に応じた lipgloss 前景色で着色する（`state_change` 本体は通常色）。`item` は状態を参照できる必要があるため、`item` 自体に状態フィールドを持たせて `refreshItems` で詰める（list との相性がよい）。
 - 色は GitHub 標準に倣う: open=緑 / merged・closed-completed=紫 / draft・closed-not_planned=灰 / closed(PR 未マージ)=赤。`applyContrastStyles` と同様、ダーク端末で沈まない明るめの色を選ぶ。
-- 括弧内のみ着色するため、Description 文字列は「通常色の `state_change(` + 着色した `<実状態>` + 通常色の `)`」を連結して組み立てる。
+- 着色は文字列末尾に置く。中間に着色を挟むと lipgloss の reset（`\x1b[0m`）で list delegate が被せる副行色が打ち切られ、reset より後ろの文字（閉じ括弧）が端末既定色に化けるため。`state_change` + 着色した `(<実状態>)` の順に連結する。
 
 ### D6: フィルタ対象に実状態を含める
 `FilterValue` は reason を含む。エンリッチ済み（=state_change の項目）なら実状態文字列も連結し、`merged` 等で絞り込めるようにする。

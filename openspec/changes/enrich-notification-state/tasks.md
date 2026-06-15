@@ -21,12 +21,12 @@
 ## 4. tui: 副行の置換・色分け・フィルタ
 
 - [x] 4.1 `item` に実状態を持たせ、`refreshItems` でキャッシュから詰める
-- [x] 4.2 `item.Description` を `reason=state_change` かつエンリッチ済みなら `state_change(<実状態>)` に整形し、`(<実状態>)` の括弧内のみ GitHub 標準カラーで色分け（open=緑 / merged・closed-completed=紫 / draft・closed-not_planned=灰 / closed(PR)=赤）。`state_change` 本体・他テキストは通常色
+- [x] 4.2 `item.Description` を `reason=state_change` かつエンリッチ済みなら `state_change(<実状態>)` に整形し、`(<実状態>)` を括弧ごと GitHub 標準カラーで色分け（open=緑 / merged・closed-completed=紫 / draft・closed-not_planned=灰 / closed(PR)=赤）。`state_change` 本体は通常色。着色は末尾に置き lipgloss の reset で delegate 色が打ち切られないようにする
 - [x] 4.3 `FilterValue` にエンリッチ済み実状態を含め、`merged` 等で絞り込めるようにする（テスト追加）
 - [x] 4.4 エンリッチ前・他 reason・対象外種別・OFF 時は従来どおり reason のみ表示になることをテストで確認
 
 ## 5. 検証・ドキュメント
 
 - [x] 5.1 `go vet ./...` / `go test ./...` / `go build ./cmd/octobell` を通す
-- [x] 5.2 `docs/manual-verification.md` に `state_change(<状態>)` 表示・括弧内のみ色分け・`enrich_state=false` の手動検証項目を追加
+- [x] 5.2 `docs/manual-verification.md` に `state_change(<状態>)` 表示・`(状態)` 括弧ごと色分け・`enrich_state=false` の手動検証項目を追加
 - [x] 5.3 `README.md` の設定一覧に `enrich_state` を追記し、`state_change` 通知の副行に実状態を付記する旨を記載
