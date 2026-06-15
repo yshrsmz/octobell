@@ -24,3 +24,25 @@ func TestBrowserURL(t *testing.T) {
 		})
 	}
 }
+
+func TestSubjectNumber(t *testing.T) {
+	cases := []struct {
+		name string
+		sub  Subject
+		want string
+	}{
+		{"PR は番号を返す", Subject{Type: "PullRequest", URL: "https://api.github.com/repos/owner/repo/pulls/42"}, "42"},
+		{"Issue は番号を返す", Subject{Type: "Issue", URL: "https://api.github.com/repos/owner/repo/issues/7"}, "7"},
+		{"Commit は空", Subject{Type: "Commit", URL: "https://api.github.com/repos/owner/repo/commits/abc123"}, ""},
+		{"Release は空", Subject{Type: "Release", URL: "https://api.github.com/repos/owner/repo/releases/99"}, ""},
+		{"subject.url 空は空", Subject{Type: "Discussion", URL: ""}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n := Notification{Subject: c.sub}
+			if got := n.SubjectNumber(); got != c.want {
+				t.Errorf("SubjectNumber() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

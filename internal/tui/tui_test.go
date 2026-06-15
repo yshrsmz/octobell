@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -18,6 +19,40 @@ func sampleNotifs() []github.Notification {
 			Subject: github.Subject{Title: "PR one", Type: "PullRequest", URL: "https://api.github.com/repos/o/r/pulls/1"}},
 		{ID: "2", Unread: true, Reason: "review_requested", Repository: repo,
 			Subject: github.Subject{Title: "Issue two", Type: "Issue", URL: "https://api.github.com/repos/o/r/issues/2"}},
+	}
+}
+
+// TestItemTitleShowsNumber は Issue/PR の主行に #<番号> が付き、番号を持たない種別では
+// 付かないこと、および FilterValue に番号が含まれることを検証する。
+func TestItemTitleShowsNumber(t *testing.T) {
+	repo := github.Repository{FullName: "o/r", HTMLURL: "https://github.com/o/r"}
+
+	pr := item{n: github.Notification{Unread: true, Subject: github.Subject{
+		Title: "PR one", Type: "PullRequest", URL: "https://api.github.com/repos/o/r/pulls/42"}, Repository: repo}}
+	if got := pr.Title(); got != "● #42 PR one" {
+		t.Errorf("PR の Title = %q, want %q", got, "● #42 PR one")
+	}
+	if fv := pr.FilterValue(); !strings.Contains(fv, "#42") {
+		t.Errorf("FilterValue に #42 を含むべき, got %q", fv)
+	}
+
+	// 既読 Issue は未読マークなしで番号が付く。
+	iss := item{n: github.Notification{Unread: false, Subject: github.Subject{
+		Title: "Issue two", Type: "Issue", URL: "https://api.github.com/repos/o/r/issues/7"}, Repository: repo}}
+	if got := iss.Title(); got != "  #7 Issue two" {
+		t.Errorf("Issue の Title = %q, want %q", got, "  #7 Issue two")
+	}
+
+	// 番号を持たない種別（Commit）は # を付さない。
+	commit := item{n: github.Notification{Unread: true, Reason: "subscribed", Subject: github.Subject{
+		Title: "Build", Type: "Commit", URL: "https://api.github.com/repos/o/r/commits/abc123"}, Repository: repo}}
+	if got := commit.Title(); got != "● Build" {
+		t.Errorf("Commit の Title = %q, want %q", got, "● Build")
+	}
+	// 番号が付与されないこと（4 フィールド連結のまま）を厳密に検証する。
+	// title 等に "#" が含まれても誤検知しないよう、期待値と完全一致で確認する。
+	if got, want := commit.FilterValue(), "o/r Commit subscribed Build"; got != want {
+		t.Errorf("番号なし種別の FilterValue = %q, want %q（番号を付さない）", got, want)
 	}
 }
 

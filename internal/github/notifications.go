@@ -63,3 +63,13 @@ func (n Notification) BrowserURL() string {
 	}
 	return base
 }
+
+// SubjectNumber は subject.url（API URL）から Issue / PullRequest の番号を返す。
+// reIssueOrPull を BrowserURL と共有し group2（番号）を取り出す。
+// issues/pulls 以外の種別、または subject.url が空の場合は "" を返す。
+func (n Notification) SubjectNumber() string {
+	if m := reIssueOrPull.FindStringSubmatch(n.Subject.URL); m != nil {
+		return m[2]
+	}
+	return ""
+}
